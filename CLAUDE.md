@@ -1,5 +1,47 @@
 In this project, we are building ecommerce customer support agents from using langgraph.
 
+## Database
+
+One Neon Postgres database (`neondb`, connection string in `NEON_POSTGRES_CONNECTION_STRING`
+in `.env`), one schema per agent. Set up and seeded by `scripts/neon-db-creation/init_neon.py` (`--reset` rebuilds).
+
+| Schema | Tables |
+|---|---|
+| `order_management` | `customers`, `inventory`, `orders` |
+| `product_recommendation` | `product_catalog`, `purchase_history` |
+| `personalization` | `personalization` |
+
+- Shared IDs across schemas: customers `cust001`..`005`, products `prod001`..`008`.
+- Foreign keys only within a schema, never across schemas, so agents stay independent.
+
+## Testing and the test database
+
+- **Separate test database.** Tests never touch `neondb`. A second database, `neondb_test`
+  (same Neon endpoint, identical schemas and seed data), is addressed by
+  `NEON_POSTGRES_TEST_CONNECTION_STRING` in `.env`. Create or rebuild it with
+  `uv run python scripts/neon-db-creation/init_neon.py --test` (add `--reset` to restore
+  the seed data after tests that write).
+- **Mock first, call Neon rarely.** Every Neon call costs time and money. Default to
+  mocking the DB layer (`queries` functions or `Database`) and the LLM in unit tests
+  (`tests/unit/`); an autouse fixture there fails any test that opens a real Postgres
+  connection. Write an integration test (`tests/integration/`, `@pytest.mark.integration`)
+  only when the behavior truly depends on real Postgres (SQL correctness, constraints,
+  schema/seed assumptions), and keep those few and small.
+- **Integration tests use the `db` fixture**, which points at the test database and refuses
+  to run if the test DSN equals the main DSN. Never point tests at
+  `NEON_POSTGRES_CONNECTION_STRING`.
+
+## LLM model selection (Groq)
+
+Pick the cheapest model that is reliable for each role; configure model names per
+role in `config/` (not hardcoded in graph code) so they can be swapped and compared.
+
+| Role | Model | Notes |
+|---|---|---|
+| Router or supervisor node | `llama-3.1-8b-instant` | Constrained enum output, `temperature=0`. |
+| Specialist agents | `openai/gpt-oss-20b` | Start here; upgrade to `openai/gpt-oss-120b` only where evals show tool-call mistakes. |
+| Hard reasoning or final response synthesis | `openai/gpt-oss-120b` | Keep the larger model for these steps. |
+
 ## Code style
 
 Write code that is structured, modular, scalable, and maintainable. Since this

@@ -1,0 +1,44 @@
+# Non-secret configuration for the dev environment.
+# Secrets (Neon connection string, Groq API keys) live in .env and are never put here.
+# Selected via APP_ENV (default: dev). Read only by src/ecommerce_agents/config.py.
+
+app:
+  env: dev
+  log_level: INFO
+  host: 127.0.0.1
+  port: 8001
+
+llm:
+  provider: groq
+  model: openai/gpt-oss-120b
+  temperature: 0.0
+  max_tokens: 1024
+  timeout_s: 30
+  max_retries: 2
+
+database:
+  schema_name: order_management
+  pool_min_size: 1
+  pool_max_size: 5
+  pool_timeout_s: 15
+  statement_timeout_ms: 10000
+  max_rows: 5            # cap on rows a tool may return to the model
+
+persistence:
+  checkpointer:
+    backend: memory      # memory | (postgres later)
+  store:
+    backend: memory      # memory | (postgres later)
+
+agent:
+  prompt_file: order_management.md
+  recursion_limit: 12
+  max_history_messages: 20
+
+tracing:
+  enabled: true          # also requires LANGSMITH_API_KEY in .env; endpoint/project overrides live there too
+  project: ecommerce-customer-support-agents   # used when LANGSMITH_PROJECT is not set
+
+api:
+  cors_origins:
+    - "*"

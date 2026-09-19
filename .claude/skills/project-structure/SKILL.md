@@ -73,6 +73,9 @@ plain library uses very few.
 - **New safety check**: `guardrails/`. **New logging, tracing or metrics code**:
   `observability/`. If these packages exist as empty placeholders, fill them in
   rather than creating a parallel location.
+- **New test**: `tests/unit/<mirrored path>/test_<module>.py` (or
+  `tests/integration/` if it needs a real service, `tests/evals/` if it needs a real
+  LLM). Put new fixtures in the nearest `conftest.py` that covers all their users.
 - **New one-off script**: `scripts/`, run directly, never imported from `src/`.
 - **New implementation-step write-up**: `docs/execution/stepN-<slug>.md`, continuing
   the existing numbering. Copy the structure of the latest existing step doc.
@@ -80,27 +83,43 @@ plain library uses very few.
 
 ## Tests
 
-Split by speed and cost first, then mirror `src/<package>/` inside each folder:
+Split by speed and cost first, then mirror `src/<package>/` inside `unit/`:
 
 ```
 tests/
-├── conftest.py            # shared fixtures (fake LLM, fake clients)
+├── conftest.py            # only fixtures BOTH layers need; omit if there are none
 ├── unit/                  # fast: no network, no DB, LLM mocked
+│   ├── conftest.py        # unit-only fixtures (settings, fake LLM, fake clients)
+│   ├── test_config.py     # mirrors src/<package>/config.py
 │   ├── agents/test_<name>.py
-│   └── controls/test_<name>.py
+│   ├── tools/test_<name>.py
+│   └── observability/test_<name>.py
 ├── integration/           # real DB and/or real tool server process
-│   ├── conftest.py        # setup and teardown fixtures
+│   ├── conftest.py        # pool/client fixtures; skips when the service is not configured
 │   └── test_<name>.py
-└── e2e/                   # optional: full run with a real LLM
+└── evals/                 # agent evals: trajectory/quality on a dataset, real LLM
     └── test_<name>.py
 ```
 
-- Unit tests run in seconds on every commit and in CI.
-- Integration tests need services, so run them separately
-  (`pytest tests/unit` vs `pytest tests/integration`).
-- Tests that call a real LLM go in `e2e/`: they are slow, cost money and are
-  non-deterministic, so they should never block normal runs.
-- Prefer folders over pytest markers for this split at small to medium project size.
+- **Mirror the source.** The test for `src/<package>/tools/order_tools.py` is
+  `tests/unit/tools/test_order_tools.py`. Every folder under `tests/` needs an
+  `__init__.py` so duplicate basenames in different folders do not collide.
+- **Fixtures live at the lowest level that needs them.** Unit-only fixtures go in
+  `tests/unit/conftest.py`, DB fixtures in `tests/integration/conftest.py`. The root
+  `conftest.py` is only for what both layers share.
+- **Folders and markers work together.** Folders decide where a test lives; register
+  markers in `pyproject.toml` (`integration`, `slow`, `eval`, with `--strict-markers`)
+  and tag tests (`pytestmark = pytest.mark.integration`) so
+  `pytest -m "not integration and not eval"` runs everything safe anywhere.
+- **Integration tests skip, never fail, without credentials.** Do the skip in the
+  fixture (`pytest.skip(...)` when the connection string is unset), not with per-module
+  boilerplate. Point them at a dedicated test schema or branch and keep them read-only
+  against seeded data; never run them against real customer data.
+- Unit tests run in seconds on every commit and in CI. Integration tests need
+  services, so run them separately (`pytest tests/unit` vs `pytest tests/integration`).
+- **Evals** (`tests/evals/`, marker `eval`) call a real LLM: slow, paid and
+  non-deterministic, so they are excluded from normal runs and CI on every push.
+- Keep `__pycache__/` and `.pytest_cache/` in `.gitignore`.
 
 ## Maturity checklist
 
